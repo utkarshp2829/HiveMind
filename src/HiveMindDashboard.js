@@ -290,6 +290,37 @@ export default function HiveMindDashboard() {
     }, 1500);
   };
 
+  const [screenStream, setScreenStream] = useState(null);
+
+  // Cleanup stream on disconnect
+  useEffect(() => {
+    if (!connected && screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      setScreenStream(null);
+    }
+  }, [connected, screenStream]);
+
+  // Handler to start screen recording
+  const startScreenRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: "always" },
+        audio: false
+      });
+      setScreenStream(stream);
+    } catch (err) {
+      addNotification('error', 'Screen recording permission denied or cancelled');
+    }
+  };
+
+  // Handler to stop screen recording
+  const stopScreenRecording = () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      setScreenStream(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Header */}
@@ -574,19 +605,37 @@ export default function HiveMindDashboard() {
               <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
                 {connected ? (
                   <div className="grid grid-cols-3 gap-1 w-full h-full p-2">
-                    {students.slice(0, 9).map(student => (
-                      <div key={student.id} className="relative bg-gray-200 rounded overflow-hidden">
-                        <img 
-                          src={student.avatar} 
-                          alt={student.name}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs px-1 py-0.5 flex items-center justify-between">
-                          <span className="truncate">{student.name.split(' ')[0]}</span>
-                          {student.speaking && <div className="w-2 h-2 bg-green-400 rounded-full"></div>}
-                        </div>
-                      </div>
-                    ))}
+                    {/* display luve feed of a chrome tab */}
+                    <div className="col-span-3 flex flex-col items-center w-full h-full">
+                      {!screenStream ? (
+                        <button
+                          onClick={startScreenRecording}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mb-2"
+                        >
+                          Start Screen Recording
+                        </button>
+                      ) : (
+                        <>
+                          <video
+                            autoPlay
+                            playsInline
+                            controls={false}
+                            ref={video => {
+                              if (video && screenStream) {
+                                video.srcObject = screenStream;
+                              }
+                            }}
+                            className="w-full h-full rounded-lg border"
+                          />
+                          <button
+                            onClick={stopScreenRecording}
+                            className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                          >
+                            Stop Recording
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center text-gray-500">
