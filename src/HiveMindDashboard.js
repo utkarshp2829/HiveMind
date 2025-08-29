@@ -155,6 +155,50 @@ export default function HiveMindDashboard() {
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [engagementData] = useState(() => generateEngagementData());
+
+  // Attentiveness value from backend
+  const [overallAttentiveness, setOverallAttentiveness] = useState(null);
+
+  // Move screenStream, videoRef, canvasRef here (before useEffect)
+  const [screenStream, setScreenStream] = useState(null);
+  const videoRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
+
+  useEffect(() => {
+    let intervalId;
+    async function fetchAttentiveness() {
+      try {
+        let frameData = '';
+        if (videoRef.current && canvasRef.current && screenStream) {
+          const video = videoRef.current;
+          const canvas = canvasRef.current;
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 360;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          frameData = canvas.toDataURL('image/jpeg');
+        }
+        const response = await fetch('http://localhost:8000/process_frame', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ frame: frameData })
+        });
+        const result = await response.json();
+        if (result.status === 'ok') {
+          setOverallAttentiveness(result.overall_concentration ?? '-');
+        } else {
+          setOverallAttentiveness('-');
+        }
+      } catch (err) {
+        setOverallAttentiveness('-');
+      }
+    }
+    if (connected) {
+      fetchAttentiveness();
+      intervalId = setInterval(fetchAttentiveness, 3000);
+    }
+    return () => clearInterval(intervalId);
+  }, [connected, screenStream]);
   
   // UI state
   const [activeTab, setActiveTab] = useState("overview");
@@ -226,8 +270,9 @@ export default function HiveMindDashboard() {
 
   // Actions
   const connectToZoom = () => {
-    setConnected(true);
-    addNotification('success', 'Connected to Zoom session (Demo Mode)');
+  setConnected(true);
+  addNotification('success', 'Connected to Zoom session (Demo Mode)');
+  startScreenRecording();
   };
 
   const disconnectZoom = () => {
@@ -290,8 +335,6 @@ export default function HiveMindDashboard() {
     }, 1500);
   };
 
-  const [screenStream, setScreenStream] = useState(null);
-
   // Cleanup stream on disconnect
   useEffect(() => {
     if (!connected && screenStream) {
@@ -314,12 +357,7 @@ export default function HiveMindDashboard() {
   };
 
   // Handler to stop screen recording
-  const stopScreenRecording = () => {
-    if (screenStream) {
-      screenStream.getTracks().forEach(track => track.stop());
-      setScreenStream(null);
-    }
-  };
+  // Removed unused stopScreenRecording function
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
@@ -607,33 +645,18 @@ export default function HiveMindDashboard() {
                   <div className="grid grid-cols-3 gap-1 w-full h-full p-2">
                     {/* display luve feed of a chrome tab */}
                     <div className="col-span-3 flex flex-col items-center w-full h-full">
-                      {!screenStream ? (
-                        <button
-                          onClick={startScreenRecording}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mb-2"
-                        >
-                          Start Screen Recording
-                        </button>
-                      ) : (
-                        <>
-                          <video
-                            autoPlay
-                            playsInline
-                            controls={false}
-                            ref={video => {
-                              if (video && screenStream) {
-                                video.srcObject = screenStream;
-                              }
-                            }}
-                            className="w-full h-full rounded-lg border"
-                          />
-                          <button
-                            onClick={stopScreenRecording}
-                            className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                          >
-                            Stop Recording
-                          </button>
-                        </>
+                      {!screenStream ? null : (
+                        <video
+                          autoPlay
+                          playsInline
+                          controls={false}
+                          ref={video => {
+                            if (video && screenStream) {
+                              video.srcObject = screenStream;
+                            }
+                          }}
+                          className="w-full h-full rounded-lg border"
+                        />
                       )}
                     </div>
                   </div>
@@ -664,7 +687,7 @@ export default function HiveMindDashboard() {
                       <div className="flex-1">
                         <p className="text-sm font-medium">{student.name}</p>
                         <p className="text-xs text-gray-600">{student.topic}</p>
-                        <p className="text-xs text-red-600">Confusion: {student.confusion}%</p>
+                        <p className="text-xs text-red-600">Confusion: {overallAttentiveness !== null ? overallAttentiveness : student.confusion}%</p>
                       </div>
                     </div>
                   </div>
@@ -803,6 +826,8 @@ export default function HiveMindDashboard() {
           </div>
         </div>
       )}
+      <video ref={videoRef} style={{ display: 'none' }} autoPlay playsInline muted />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   );
 }
